@@ -4,10 +4,12 @@
 English below.
 
 SHOWCASE PROJEKT ZUR ERPROBUNG DES ZUSAMMENSPIELS VON IOT, CLOUD UND BUSINESS INTELLIGENCE
+
 Der Plan
 1.	IoT device ersetzt herkömmliches Thermostat zur Steuerung der Fußbodenheizung
 2.	Sensordaten werden an eine Anwendung in der Cloud geschickt und verarbeitet
 3.	Steuerungsfunktion übermittelt Anweisungen an iot-Thermostat
+
 Die Komponenten
 1.	IoT device:
 Bestandteile: Microcontroller, Klima-Sensor, Display, Potentiometer, Relais, Netzteil.
