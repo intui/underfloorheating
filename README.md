@@ -28,5 +28,6 @@ Relevante Kennzahlen des Raumes und der Wohnung ermitteln, die vom Heizprogramm 
 
 
 EN:
-Using the cloud and ioT to create a connected smart heating system for underfloor heating systems
+Using the cloud and ioT to create a connected smart heating system for underfloor heating systems.
+
 More details coming soon.
