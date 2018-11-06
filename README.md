@@ -3,7 +3,7 @@
 
 English below.
 
-SHOWCASE PROJEKT ZUR ERPROBUNG DES ZUSAMMENSPIELS VON IOT, CLOUD UND BUSINESS INTELLIGENCE
+Showcase Projekt zur Erprobung des Zusammenspiels von ioT, Cloud und Business Intelligence
 
 Der Plan
 1.	IoT device ersetzt herkömmliches Thermostat zur Steuerung der Fußbodenheizung
