@@ -6,40 +6,59 @@
 
 //#include "intuienvironmentSettings.h"
 
-WiFiClient clientAz;
 WiFiClient client;
 
 String registerSensorAzure(const char* intuiSmartHomeFunction, char* sensorId, char* sensorSecurePin)
 {
   String returnVal = "";
   Serial.println("registerSensorAzure entered.");
-  if( clientAz.connect(intuiSmartHomeFunction, 80))
+  if( client.connect(intuiSmartHomeFunction, 80))
   {
     Serial.write("connected to: ");
     Serial.println(intuiSmartHomeFunction);
     // POST URI
-    clientAz.print("GET /api/Register"); //clientAz.print(table_name); 
-    clientAz.print("?id=");
-    clientAz.print(sensorId);
-    clientAz.print("&pin=");
-    clientAz.print(sensorSecurePin);
-    clientAz.println(" HTTP/1.1");
+    client.print("GET /api/Register"); //client.print(table_name); 
+    client.print("?id=");
+    client.print(sensorId);
+    client.print("&pin=");
+    client.print(sensorSecurePin);
+    client.println(" HTTP/1.1");
     // Host header
-    clientAz.print("Host:"); clientAz.println(intuiSmartHomeFunction);
+    client.print("Host:"); client.println(intuiSmartHomeFunction);
     // Azure Mobile Services application key
-    clientAz.print("X-ZUMO-APPLICATION:"); clientAz.println("intuiSmarthome");
+    client.print("X-ZUMO-APPLICATION:"); client.println("intuiSmarthome");
     // JSON content type
-    clientAz.println("Content-Type: application/json");
-    clientAz.print("Content-Length:"); clientAz.println(0);//"102");
+    client.println("Content-Type: application/json");
+    client.print("Content-Length:"); client.println(0);//"102");
     // End of headers
-    clientAz.println();    
-    while (clientAz.available()) 
+    client.println(); 
+
+    // Check HTTP status
+    char status[32] = {0};
+    client.readBytesUntil('\r', status, sizeof(status));
+    if (strcmp(status, "HTTP/1.1 200 OK") != 0) {
+      Serial.print(F("Unexpected response: "));
+      Serial.println(status);
+      return("");
+    }
+    // Skip HTTP headers
+    char endOfHeaders[] = "\r\n\r\n";
+    if (!client.find(endOfHeaders)) {
+      Serial.println(F("Invalid response"));
+      return("");
+    }
+    client.find("\n");
+    returnVal = client.readStringUntil('\r');
+    Serial.println("registerSensorAzure returnVal: " + returnVal);
+    /*
+    while (client.available()) 
       {
-      String line = clientAz.readStringUntil('\n');
+      String line = client.readStringUntil('\n');
       Serial.println(line);
       returnVal = line;
       }
-    clientAz.stop();
+    client.stop();
+    */
     // returns servertime in seconds since 1970
     return returnVal;
   }
@@ -54,7 +73,7 @@ String getProgramFromAzure(const char* intuiSmartHomeFunction, char* sensorId)
     Serial.write("connected to: ");
     Serial.println(intuiSmartHomeFunction);
     // POST URI
-    client.print("GET /api/GetProgram"); //client.print(table_name); 
+    client.print("GET /api/Program"); //client.print(table_name); 
     client.print("?id=");
     client.print(sensorId);
     client.println(" HTTP/1.1");
@@ -63,8 +82,8 @@ String getProgramFromAzure(const char* intuiSmartHomeFunction, char* sensorId)
     // Azure Mobile Services application key
     client.print("X-ZUMO-APPLICATION:"); client.println("intuiSmarthome");
     // JSON content type
-    client.println("Content-Type: application/json");
-    client.print("Content-Length:"); client.println(0);//"102");
+    //client.println("Content-Type: application/json");
+    //client.print("Content-Length:"); client.println(0);//"102");
     // End of headers
     client.println();    
     // Check HTTP status
@@ -93,6 +112,10 @@ String getProgramFromAzure(const char* intuiSmartHomeFunction, char* sensorId)
     Serial.println(String(capacity));
     // Parse JSON object
     //{"SensorId":"000-00000-007","programItems":[{"ProgramItemId":0,"Seconds":28800,"TargetValue":23.0},{"ProgramItemId":1,"Seconds":68400,"TargetValue":18.0}]}
+
+    String retVal = client.readStringUntil('\r');
+    return retVal;
+    // del:
     JsonObject& root = jsonBuffer.parseObject(client);
     if (!root.success()) {
       Serial.println(F("Parsing failed!"));
@@ -112,6 +135,65 @@ String getProgramFromAzure(const char* intuiSmartHomeFunction, char* sensorId)
   }
 }
 
+void sendEventToAzure(const char* intuiSmartHomeFunction, String sensorId, String event)
+{
+  Serial.println("sendEventToAzure entered.");
+  String captureHour = String(hour());
+  String captureMinute = String(minute());
+  String captureSecond = String(second());
+
+  if(captureHour.length() == 1)
+  {
+    captureHour = "0" + captureHour;
+  }
+  if(captureMinute.length() == 1)
+  {
+    captureMinute = "0" + captureMinute;
+  }
+  if(captureSecond.length() == 1)
+  {
+    captureSecond = "0" + captureSecond;
+  }
+
+  String captureTime = String(year()) + "-" + String(month()) + "-" + String(day()) + "T" + captureHour + ":" + captureMinute + ":" + captureSecond + ".000";
+  String jsonStr = "{\"SensorId\":\"" + sensorId +"\", \"EventTime\": \"" + captureTime + "\", \"Event\":\"" + event + "\"}";
+  if( client.connect(intuiSmartHomeFunction, 80))
+  {
+    Serial.write("connected to: ");
+    Serial.println(intuiSmartHomeFunction);
+    Serial.println(jsonStr);
+
+    int millisBefore = millis();  
+
+    // POST URI
+    client.print("POST /api/PostEvent/"); //client.print(table_name); 
+    client.println(" HTTP/1.1");
+    // Host header
+    client.print("Host:"); client.println(intuiSmartHomeFunction);
+    // Azure Mobile Services application key
+    client.print("X-ZUMO-APPLICATION:"); client.println("intuiSmarthome");
+    // JSON content type
+    client.println("Content-Type: application/json");
+    // Content length
+    client.print("Content-Length:"); client.println(jsonStr.length());
+    // End of headers
+    client.println();
+    // POST message body
+    client.println(jsonStr);
+    
+    while (client.available()) 
+      {
+      char c = client.read();
+      Serial.write(c);
+      }
+    Serial.println();
+    client.stop();
+    int duration = millis() - millisBefore;
+    Serial.print("Duration: ");
+    Serial.println(String(duration));
+    Serial.println();
+  }
+}
 void sendDataToAzure(const char* intuiSmartHomeFunction, String temperature, String humidity, String sensorId)
 {
   Serial.println("sendDataToAzure entered.");

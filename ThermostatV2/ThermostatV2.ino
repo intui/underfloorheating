@@ -1,29 +1,3 @@
-/*
- * bme280_example.ino
- * Example sketch for bme280
- *
- * Copyright (c) 2016 seeed technology inc.
- * Website    : www.seeedstudio.com
- * Author     : Lambor
- * Create Time:
- * Change Log :
- *
- * The MIT License (MIT)
-
-  "Hello World" version for U8x8 API
-
-  Universal 8bit Graphics Library (https://github.com/olikraus/u8g2/)
-
-  Copyright (c) 2016, olikraus@gmail.com
-  All rights reserved.
-
-  Redistribution and use in source and binary forms, with or without modification, 
-  are permitted provided that the following conditions are met:
-
-  * Redistributions of source code must retain the above copyright notice, this list 
-    of conditions and the following disclaimer.
-*/
-
 #include "Seeed_BME280.h"
 #include <Wire.h>
 #include <U8x8lib.h>
@@ -31,15 +5,16 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <ArduinoJson.h>
+#include <Encoder.h>
 
 #include "intuienvironmentAzure.h"
 #include "intuienvironmentSettings.h"
 #include "schmittTriggerSwitch.h"
 
-#define sensorPin A0
+//#define sensorPin A0
 
 float minTemp = 15.0;
-float maxTemp = 40.0;
+float maxTemp = 30.0;
 
 U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(U8X8_PIN_NONE);
 BME280 bme280;
@@ -50,44 +25,71 @@ int lastupload = 0;
 int lastProgPull = 0;
 int lastSchmittTrig = 0;
 int timeZone = 1;
+int bootTimeInt = 0; // Servertime
 bool WiFiConnected = false;
 float targetTemp = 0.0f;
+int manualUpdateTime = 0;
+float manualTemperatureValue = 0; //22.5;
+int serverUpdateTime = 0;
+float serverTemperatureValue = 0;
+bool manualTemperatureUpdated = false;
+
+Encoder myEnc(D5, D6);
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("setup started.");
-  pinMode(16, OUTPUT); // Wemos D1 = 2
+  pinMode(D0, OUTPUT); // Wemos D0 = 16 // move to settings
+  Serial.println("initializing MBE280 sensor.");
 
+  //Wire.begin(D2, D1);
+  //Serial.println("SDA: " + String(SDA)); // 4
+  //Serial.println("SCL: " + String(SCL)); // 5
   if(!bme280.init()){
     Serial.println("Device error!");
   }
+  Serial.println("initializing display");
   initializeDisplay();
+  
   connectWifi();
  
   Serial.println();
   String bootTime = registerSensorAzure(intuiSmartHomeFunction, sensorId, sensorSecurePin);
   Serial.println("bootTime: " + bootTime);
-  int bootMillis = millis();
-  setTime(bootTime.toInt());
+  bootTimeInt = bootTime.toInt();
+  //int bootMillis = millis();
+  setTime(bootTimeInt);
   adjustTime(timeZone * 3600);
   Serial.print("it is: "); Serial.print(hour()); Serial.print(":"); Serial.print(minute()); Serial.print(".");Serial.println(second());
   //lastupload = 0;
-  getProgram();
+  //getProgram();
+  myEnc.write(300);
+
+  sendEventToAzure(intuiSmartHomeFunction, sensorId, "device started");
 }
 
 void loop()
 {
-  float temperatureSelectValue = analogRead(sensorPin);
-  targetTemp = minTemp + (maxTemp - minTemp) * (temperatureSelectValue/980.0f);
+  //targetTemp = 
+  readTemperatureKnob();
+  //long newPosition = myEnc.read();
   printEnv(targetTemp);
   printTime();
   float t = bme280.getTemperature();
 
-  if (millis() - lastSchmittTrig > 2*1000)
+  if (millis() - lastSchmittTrig > 0.5*1000)
   {
-    Serial.println("Knopf: " + String(temperatureSelectValue));
-    schmittTriggerSwitch(t, targetTemp);
+    //Serial.println("Target: " + String(targetTemp));
+    int triggerValue = schmittTriggerSwitch(t, targetTemp);
+    if(triggerValue == 1)
+    {
+      sendEventToAzure(intuiSmartHomeFunction, sensorId, "{\\\"HeatingValue\\\": true }");
+    }
+    if(triggerValue == 2)
+    {
+      sendEventToAzure(intuiSmartHomeFunction, sensorId, "{\\\"HeatingValue\\\": false }");
+    }    
     lastSchmittTrig = millis();
   }
   if (millis() - lastupload > 1*60*1000)
@@ -96,49 +98,72 @@ void loop()
     lastupload = millis();
   }
   // ToDo: ask API for anyNews to call getProgram in case.
-  if (millis() - lastProgPull > 5 * 60 * 1000)
+  if (millis() - lastProgPull > 2 * 60 * 1000)
   {
      getProgram();
      lastProgPull = millis();  
   }
-  delay(100);
+
+  if(manualTemperatureUpdated && (bootTimeInt + (millis() / 1000)) - manualUpdateTime > 5 )
+  {
+    sendEventToAzure(intuiSmartHomeFunction, sensorId, "{\\\"targetTemperature\\\": \\\"" + String(targetTemp) + "\\\"}");
+    manualTemperatureUpdated = false;
+  }
+  //delay(25);
+}
+
+void readTemperatureKnob()
+{
+  //float temperatureSelectValue = analogRead(sensorPin);
+  float temperatureSelectValue = myEnc.read();
+  float tempValue = minTemp + temperatureSelectValue / 40.0f;
+  if(abs(manualTemperatureValue - tempValue) > 0.1)
+  {
+    manualTemperatureValue = tempValue;
+    manualUpdateTime = bootTimeInt + (millis() / 1000);
+    Serial.print("TargetTemp manually updated to: ");
+    Serial.print(manualTemperatureValue);
+    Serial.print(" at: ");
+    Serial.println(manualUpdateTime);
+    if(manualUpdateTime > serverUpdateTime)
+    {
+      targetTemp = manualTemperatureValue;
+      Serial.println("readTemperatureKnob set targetTemp to: " + String(targetTemp));
+      manualTemperatureUpdated = true;
+    }
+  }
+  //return manualTemperatureValue;
 }
 
 void getProgram()
 {
   String program = getProgramFromAzure(intuiSmartHomeFunction, sensorId);
-
-  //ToDo:
-  targetTemp = parseProgram(program);
-  
-  // get Program from function
-  // deserialize result like that:
-  
+  Serial.println("got program: " + program);
+  parseProgram(program);
 }
 
-float parseProgram(String programStr)
+void parseProgram(String programStr)
 {
   Serial.println("parseProgram entered.");
  
-  char JSONMessage[] = " {\"SensorType\": \"Temperature\", \"Value\": 10}"; //Original message
-  Serial.print("Initial string value: ");
-  Serial.println(JSONMessage);
- 
-  StaticJsonBuffer<300> JSONBuffer;   //Memory pool
-  JsonObject& parsed = JSONBuffer.parseObject(JSONMessage); //Parse message
- 
-  if (!parsed.success()) {   //Check for errors in parsing
- 
+  StaticJsonBuffer<400> JSONBuffer;   //Memory pool
+  JsonObject& parsed = JSONBuffer.parseObject(programStr);
+ //{"SensorId":"000-00000-007","TimeOfCreation":1542192927,"programItems":[{"ProgramItemId":0,"Seconds":21600,"TargetValue":23.0},{"ProgramItemId":1,"Seconds":68400,"TargetValue":18.0}]}
+  if (!parsed.success()) 
+  {   
     Serial.println("Parsing failed");
-    delay(5000);  
- }
-  const char * sensorType = parsed["SensorType"]; //Get sensor type value
-  int value = parsed["Value"];                                         //Get value of sensor measurement
- 
-  Serial.println(sensorType);
-  Serial.println(value);
- 
-  return 0.0;
+    delay(500);  
+    return;    
+  }
+  Serial.println("parsed program: " + programStr);
+  float serverTemperatureValue = parsed["programItems"][0]["TargetValue"];
+  int serverUpdateTime = parsed["TimeOfCreation"];
+
+  if(manualUpdateTime <= serverUpdateTime)
+  {
+    targetTemp = serverTemperatureValue;
+    Serial.println("parseProgram set targetTemp to: " + String(targetTemp));
+  }
 }
 
 void uploadAmbience()

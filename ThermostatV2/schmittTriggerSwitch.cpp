@@ -1,19 +1,21 @@
 #include "Arduino.h"
+//#include "intuienvironmentSettings.h"
 
 //#define relaisPin 0
 
-float schmittTriggerDelta = 0.3;
+float schmittTriggerDelta = 0.2;
 bool schmittTriggerUp = true;
 bool relayOn = false;
-int relaisPin = 16; //5
+int relaisPin = D0; //16; //5
 
-void schmittTriggerSwitch(float t, float targetTemp)
+// returns 0 for unchanged, 1 for on, 2 for off 
+int schmittTriggerSwitch(float t, float targetTemp)
 {
-  Serial.println("schmittTriggerSwitch entered. TriggerUp = " + String(schmittTriggerUp)) ;
+  //Serial.println("schmittTriggerSwitch entered. TriggerUp = " + String(schmittTriggerUp)) ;
   
   if (schmittTriggerUp) 
   {
-    Serial.println("t, target - sTD: " + String(t) + ", " + String(targetTemp - schmittTriggerDelta) );
+    //Serial.println("t, target - sTD: " + String(t) + ", " + String(targetTemp - schmittTriggerDelta) );
     if(t < targetTemp - schmittTriggerDelta)
     {
       //switch off
@@ -21,11 +23,12 @@ void schmittTriggerSwitch(float t, float targetTemp)
      digitalWrite(relaisPin, HIGH);
      Serial.println("\n###########\nswitched relais ON\n###########\n");
      relayOn = true;
+     return 1;
     }
   }
   else
   {
-    Serial.println("t, target: " + String(t) + ", " + String(targetTemp) );
+    //Serial.println("t, target: " + String(t) + ", " + String(targetTemp) );
     if (t > targetTemp)
     {
       // switch on
@@ -33,8 +36,11 @@ void schmittTriggerSwitch(float t, float targetTemp)
       digitalWrite(relaisPin, LOW);
       Serial.println("\n###########\nswitched relais OFF\n###########\n");
       relayOn = false;
+      return 2;
     }
   }
+  return 0;
+
   /*
   Serial.println("\n schmittTriggerSwitch about to exit.");
   Serial.println("lastSwitchOn: " + String(lastSwitchOn));
