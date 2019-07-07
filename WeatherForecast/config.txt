@@ -1,0 +1,3 @@
+# Config-File for Weather Forecast
+APIKey=XXX
+units=metric
